@@ -36,10 +36,14 @@ git submodule update --init --recursive
 
 # 1) Build GGML with Metal
 cmake -S ggml -B ggml/build -DGGML_METAL=ON
+# 1.1) Build GGML with Vulkan
+cmake -S ggml -B ggml/build -DVULKAN=ON
 cmake --build ggml/build -j4
 
 # 2) Build qwen3-tts.cpp
 cmake -S . -B build
+# 2.1) Enable PIC for Linux / MinGW-w64
+cmake -S . -B build -DCMAKE_POSITION_INDEPENDENT_CODE=ON
 cmake --build build -j4
 
 # 3) Create a uv Python environment for setup/conversion tools
