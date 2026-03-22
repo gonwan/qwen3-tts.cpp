@@ -330,9 +330,9 @@ bool AudioTokenizerDecoder::load_model(const std::string & model_path) {
     normalize_codebooks();
     // Codebooks are normalized in host memory; sync once to backend tensors.
     auto upload_if_present = [](struct ggml_tensor * t) {
-        if (t && t->data) {
-            ggml_backend_tensor_set(t, t->data, 0, ggml_nbytes(t));
-        }
+        // if (t && t->data) {
+        //     ggml_backend_tensor_set(t, t->data, 0, ggml_nbytes(t));
+        // }
     };
     upload_if_present(model_.vq_first_codebook);
     for (int i = 0; i < 15; ++i) {
