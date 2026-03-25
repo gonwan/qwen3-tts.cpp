@@ -32,6 +32,7 @@ void print_usage(const char * program) {
     fprintf(stderr, "  -t, --text <text>      Text to synthesize (required)\n");
     fprintf(stderr, "  -o, --output <file>    Output WAV file (default: output.wav)\n");
     fprintf(stderr, "  -r, --reference <file> Reference audio for voice cloning\n");
+    fprintf(stderr, "  --seed <n>             Random seed\n");
     fprintf(stderr, "  --temperature <val>    Sampling temperature (default: 0.9, 0=greedy)\n");
     fprintf(stderr, "  --top-k <n>            Top-k sampling (default: 50, 0=disabled)\n");
     fprintf(stderr, "  --top-p <val>          Top-p sampling (default: 1.0)\n");
@@ -55,6 +56,7 @@ int main(int argc, char ** argv) {
     std::string reference_audio;
     
     qwen3_tts::tts_params params;
+    int seed = -1;
     
     // Parse arguments
     for (int i = 1; i < argc; i++) {
@@ -99,6 +101,12 @@ int main(int argc, char ** argv) {
                 return 1;
             }
             reference_audio = argv[i];
+        } else if (arg == "--seed") {
+            if (++i >= argc) {
+                fprintf(stderr, "Error: missing seed value\n");
+                return 1;
+            }
+            seed = std::stoi(argv[i]);
         } else if (arg == "--temperature") {
             if (++i >= argc) {
                 fprintf(stderr, "Error: missing temperature value\n");
@@ -177,7 +185,11 @@ int main(int argc, char ** argv) {
     
     // Initialize TTS
     qwen3_tts::Qwen3TTS tts;
-    
+
+    if (seed != -1) {
+        tts.set_seed(seed);
+    }
+
     fprintf(stderr, "Loading models from: %s\n", model_dir.c_str());
     if (!tts.load_models(model_dir, tts_model, tokenizer_model)) {
         fprintf(stderr, "Error: %s\n", tts.get_error().c_str());

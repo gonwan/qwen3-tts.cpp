@@ -423,7 +423,7 @@ bool TTSTransformer::create_tensors(struct gguf_context * ctx) {
             n_dims = 1;
         } else if (strstr(name, "talker.blk.")) {
             int layer_idx = -1;
-            if (sscanf(name, "talker.blk.%d.", &layer_idx) == 1 && 
+            if (sscanf(name, "talker.blk.%d.", &layer_idx) == 1 &&
                 layer_idx >= 0 && layer_idx < cfg.n_layers) {
                 
                 if (strstr(name, "attn_norm.weight")) {
@@ -477,7 +477,7 @@ bool TTSTransformer::create_tensors(struct gguf_context * ctx) {
                 continue;
             }
             int layer_idx = -1;
-            if (sscanf(name, "code_pred.blk.%d.", &layer_idx) == 1 && 
+            if (sscanf(name, "code_pred.blk.%d.", &layer_idx) == 1 &&
                 layer_idx >= 0 && layer_idx < cfg.code_pred_layers) {
                 
                 if (strstr(name, "attn_norm.weight")) {
@@ -690,7 +690,11 @@ bool TTSTransformer::load_tensor_data(const std::string & path, struct gguf_cont
         
         read_buf.resize(nbytes);
         
+#ifdef _WIN32
+        if (_fseeki64(f, data_offset + offset, SEEK_SET) != 0) {
+#else
         if (fseek(f, data_offset + offset, SEEK_SET) != 0) {
+#endif
             error_msg_ = "Failed to seek to tensor data: " + std::string(name);
             fclose(f);
             release_preferred_backend(backend);
@@ -1340,7 +1344,7 @@ struct ggml_cgraph * TTSTransformer::build_prefill_forward_graph(int32_t n_token
     ggml_set_name(cur, "hidden_states");
     ggml_set_output(cur);
 
-    struct ggml_tensor * logits = ggml_mul_mat(ctx0, model_.codec_head, cur);
+    struct ggml_tensor * logits = mul_mat(ctx0, model_.codec_head, cur);
     ggml_set_name(logits, "logits");
     ggml_set_output(logits);
     

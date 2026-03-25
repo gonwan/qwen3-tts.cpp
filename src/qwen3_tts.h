@@ -83,7 +83,9 @@ class Qwen3TTS {
 public:
     Qwen3TTS();
     ~Qwen3TTS();
-    
+
+    void set_seed(int seed);
+
     // Load all models from directory
     // model_dir should contain: transformer.gguf, tokenizer.gguf, vocoder.gguf
     bool load_models(const std::string & model_dir,

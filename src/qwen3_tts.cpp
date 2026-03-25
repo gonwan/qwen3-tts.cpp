@@ -120,6 +120,11 @@ Qwen3TTS::Qwen3TTS() = default;
 
 Qwen3TTS::~Qwen3TTS() = default;
 
+void Qwen3TTS::set_seed(int seed)
+{
+    this->transformer_.set_seed((uint32_t)seed);
+}
+
 bool Qwen3TTS::load_models(const std::string & model_dir,
                            const std::string & tts_model,
                            const std::string & tokenizer_model) {
