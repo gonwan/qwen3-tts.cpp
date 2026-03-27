@@ -236,8 +236,13 @@ int main(int argc, char ** argv) {
     });
     
     // Generate speech
+#ifdef _WIN32
+    std::string utf8Text = mbcs_to_utf8(text);
+#else
+    std::string utf8Text = text;
+#endif
     qwen3_tts::tts_result result;
-    
+
     if (!speaker_embedding_file.empty()) {
         std::vector<float> speaker_embedding;
         if (!qwen3_tts::load_speaker_embedding_file(speaker_embedding_file, speaker_embedding)) {
@@ -252,18 +257,13 @@ int main(int argc, char ** argv) {
         fprintf(stderr, "Synthesizing with provided speaker embedding: \"%s\"\n", text.c_str());
         fprintf(stderr, "Speaker embedding: %s (%zu floats)\n",
                 speaker_embedding_file.c_str(), speaker_embedding.size());
-        result = tts.synthesize_with_embedding(text, speaker_embedding.data(), speaker_embedding.size(), params);
+        result = tts.synthesize_with_embedding(utf8Text, speaker_embedding.data(), speaker_embedding.size(), params);
     } else if (reference_audio.empty()) {
         fprintf(stderr, "Synthesizing: \"%s\"\n", text.c_str());
-        result = tts.synthesize(text, params);
+        result = tts.synthesize(utf8Text, params);
     } else {
         fprintf(stderr, "Synthesizing with voice cloning: \"%s\"\n", text.c_str());
         fprintf(stderr, "Reference audio: %s\n", reference_audio.c_str());
-#ifdef _WIN32
-        std::string utf8Text = mbcs_to_utf8(text);
-#else
-        std::string utf8Text = text;
-#endif
 
         std::vector<float> ref_samples;
         int ref_sample_rate;

@@ -36,16 +36,10 @@ git submodule update --init --recursive
 
 # 1) Build GGML with Metal
 cmake -S ggml -B ggml/build -DGGML_METAL=ON
-# 1.1) Build GGML with Vulkan/Linux
-cmake -S ggml -B ggml/build -DGGML_VULKAN=ON
-# 1.2) Build GGML with Vulkan/MinGW-w64
-cmake -S ggml -B ggml/build -DBUILD_SHARED_LIBS=ON -DGGML_VULKAN=ON
 cmake --build ggml/build -j4
 
 # 2) Build qwen3-tts.cpp
 cmake -S . -B build
-# 2.1) Enable PIC for Linux & MinGW-w64
-cmake -S . -B build -DCMAKE_POSITION_INDEPENDENT_CODE=ON
 cmake --build build -j4
 
 # 3) Create a uv Python environment for setup/conversion tools
@@ -103,7 +97,7 @@ If your Markdown renderer does not show inline controls, use direct links:
 - [Play input reference WAV](./examples/readme_clone_input.wav)
 - [Play generated output WAV](./examples/readme_example_clone.wav)
 
-## Build
+## Build (Linux, Windows)
 
 ```bash
 git clone https://github.com/predict-woo/qwen3-tts.cpp.git
@@ -111,11 +105,15 @@ cd qwen3-tts.cpp
 git submodule update --init --recursive
 
 # Build GGML (vendored in ./ggml)
-cmake -S ggml -B ggml/build -DGGML_METAL=ON
+# Vulkan/Linux
+cmake -S ggml -B ggml/build -DGGML_VULKAN=ON
+# Vulkan/MinGW-w64
+cmake -S ggml -B ggml/build -DGGML_VULKAN=ON -DBUILD_SHARED_LIBS=ON
 cmake --build ggml/build -j4
 
 # Build qwen3-tts.cpp
-cmake -S . -B build
+# Enable PIC for Linux & MinGW-w64
+cmake -S . -B build -DCMAKE_POSITION_INDEPENDENT_CODE=ON
 cmake --build build -j4
 ```
 
@@ -177,9 +175,15 @@ Place both `.gguf` files in a `models/` directory.
 | Flag | Description | Default |
 |------|-------------|---------|
 | `-m, --model <dir>` | Model directory containing GGUF files | (required) |
+| `--tts-model <file>` | Explicit TTS model file | qwen3-tts-0.6b-f16.gguf      |
+| `--tokenizer-model <file>` | Explicit tokenizer model file | qwen3-tts-tokenizer-f16.gguf |
 | `-t, --text <text>` | Text to synthesize | (required) |
 | `-o, --output <file>` | Output WAV file path | `output.wav` |
 | `-r, --reference <file>` | Reference audio for voice cloning | (none) |
+| `--speaker-embedding <file>` | Use precomputed speaker embedding (.json/.bin) | (none) |
+| `--dump-speaker-embedding <file>` | Save extracted embedding from --reference | (none) |
+| `--no-f32-acc` | Disable f32 matmul accumulation | on for GPU |
+| `--seed <n>` | RNG seed for reproducible output | random |
 | `--temperature <val>` | Sampling temperature (0 = greedy) | 0.9 |
 | `--top-k <n>` | Top-k sampling (0 = disabled) | 50 |
 | `--top-p <val>` | Top-p sampling | 1.0 |
