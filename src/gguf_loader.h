@@ -69,8 +69,7 @@ bool load_tensor_data_from_file(
     struct ggml_context * model_ctx,
     const std::map<std::string, struct ggml_tensor *> & tensors,
     ggml_backend_buffer_t & buffer,
-    std::string & error_msg,
-    enum ggml_backend_dev_type preferred_backend_type = GGML_BACKEND_DEVICE_TYPE_CPU
+    std::string & error_msg
 );
 
 // Helper to initialize backend with GPU preference and CPU fallback

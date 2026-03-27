@@ -247,16 +247,17 @@ bool AudioTokenizerEncoder::load_model(const std::string & model_path) {
             }
         }
     }
-    
-    if (!load_tensor_data_from_file(model_path, gguf_ctx, model_.ctx, 
-                                     model_.tensors, model_.buffer, error_msg_)) {
-        return false;
-    }
-    
+
     state_.backend = init_preferred_backend("AudioTokenizerEncoder", &error_msg_);
     if (!state_.backend) {
         return false;
     }
+
+    if (!load_tensor_data_from_file(model_path, gguf_ctx, model_.ctx,
+                                    model_.tensors, model_.buffer, error_msg_)) {
+        return false;
+    }
+
     ggml_backend_dev_t device = ggml_backend_get_device(state_.backend);
     const char * device_name = device ? ggml_backend_dev_name(device) : "Unknown";
     fprintf(stderr, "  AudioTokenizerEncoder backend: %s\n", device_name);

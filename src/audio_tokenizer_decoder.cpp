@@ -314,33 +314,32 @@ bool AudioTokenizerDecoder::load_model(const std::string & model_path) {
             #undef MATCH1S
         }
     }
-    
-    if (!load_tensor_data_from_file(model_path, gguf_ctx, model_.ctx,
-                                     model_.tensors, model_.buffer, error_msg_,
-                                     GGML_BACKEND_DEVICE_TYPE_IGPU)) {
-        return false;
-    }
-    
+
     for (int i = 0; i < 4; ++i) {
         model_.dec_blocks[i].res[0].dilation = 1;
         model_.dec_blocks[i].res[1].dilation = 3;
         model_.dec_blocks[i].res[2].dilation = 9;
     }
-    
+
     normalize_codebooks();
     // Codebooks are normalized in host memory; sync once to backend tensors.
     auto upload_if_present = [](struct ggml_tensor * t) {
-        // if (t && t->data) {
-        //     ggml_backend_tensor_set(t, t->data, 0, ggml_nbytes(t));
-        // }
+        if (t && t->data) {
+            ggml_backend_tensor_set(t, t->data, 0, ggml_nbytes(t));
+        }
     };
     upload_if_present(model_.vq_first_codebook);
     for (int i = 0; i < 15; ++i) {
         upload_if_present(model_.vq_rest_codebook[i]);
     }
-    
+
     state_.backend = init_preferred_backend("AudioTokenizerDecoder", &error_msg_);
     if (!state_.backend) {
+        return false;
+    }
+
+    if (!load_tensor_data_from_file(model_path, gguf_ctx, model_.ctx,
+                                    model_.tensors, model_.buffer, error_msg_)) {
         return false;
     }
 
