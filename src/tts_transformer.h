@@ -5,12 +5,12 @@
 #include "gguf.h"
 #include "coreml_code_predictor.h"
 
+#include <functional>
 #include <string>
 #include <map>
 #include <vector>
 #include <memory>
 #include <random>
-#include <functional>
 #ifdef QWEN3_TTS_TIMING
 #include <chrono>
 #endif
@@ -81,12 +81,10 @@ struct tts_transformer_config {
     // Code predictor
     int32_t code_pred_layers = 5;
     int32_t code_pred_vocab_size = 2048;  // Per-codebook vocab
-    int32_t code_pred_hidden_size = 1024;
-    int32_t code_pred_n_attention_heads = 16;
-    int32_t code_pred_n_key_value_heads = 8;
-    int32_t code_pred_intermediate_size = 3072;
-    int32_t code_pred_head_dim = 128;
-
+    int32_t code_pred_hidden_size = 1024;       // code predictor transformer width
+    int32_t code_pred_intermediate_size = 3072; // code predictor FFN width
+    float code_pred_rope_theta = 10000.0f;      // code predictor RoPE base (distinct from talker)
+    
     // Special codec tokens
     int32_t codec_pad_id = 2148;
     int32_t codec_bos_id = 2149;
@@ -145,20 +143,20 @@ struct tts_transformer_model {
     // Codec head (for first codebook prediction)
     struct ggml_tensor * codec_head = nullptr;     // [hidden_size, codec_vocab_size]
     
-    // Code predictor layers
-    std::vector<transformer_layer> code_pred_layers;
+     // Code predictor layers
+     std::vector<transformer_layer> code_pred_layers;
+     
+     // Code predictor output norm (final RMS norm before lm_head)
+     struct ggml_tensor * code_pred_output_norm = nullptr;  // [code_pred_hidden_size]
 
-    // Code predictor output norm (final RMS norm before lm_head)
-    struct ggml_tensor * code_pred_output_norm = nullptr;  // [code_pred_hidden_size]
+     // Code predictor per-codebook embeddings and heads (15 codebooks, 0 uses talker output)
+     std::vector<struct ggml_tensor *> code_pred_embd;  // [hidden_size, code_pred_vocab_size] x 15 (talker dim)
+     std::vector<struct ggml_tensor *> code_pred_head;  // [code_pred_hidden_size, code_pred_vocab_size] x 15
 
-    // Code predictor MTP projection (talker_hidden -> code_pred_hidden)
-    struct ggml_tensor * code_pred_mtp_proj_w = nullptr;  // [hidden_size, code_pred_hidden_size]
-    struct ggml_tensor * code_pred_mtp_proj_b = nullptr;  // [code_pred_hidden_size]
-
-    // Code predictor per-codebook embeddings and heads (15 codebooks, 0 uses talker output)
-    std::vector<struct ggml_tensor *> code_pred_embd;  // [hidden_size, code_pred_vocab_size] x 15
-    std::vector<struct ggml_tensor *> code_pred_head;  // [hidden_size, code_pred_vocab_size] x 15
-
+     // MTP projection (talker hidden -> code predictor hidden); nullptr when equal (0.6B)
+     struct ggml_tensor * code_pred_mtp_proj_w = nullptr;  // [hidden_size, code_pred_hidden_size]
+     struct ggml_tensor * code_pred_mtp_proj_b = nullptr;  // [code_pred_hidden_size]
+    
     // GGML context for tensor metadata
     struct ggml_context * ctx = nullptr;
     
@@ -205,8 +203,28 @@ public:
     // Load model from GGUF file
     bool load_model(const std::string & model_path);
 
+    // Cap intra-op threads on the CPU backend(s); no-op for non-CPU backends.
+    // Call after load_model(), before the first forward pass.
+    void set_n_threads(int32_t n_threads);
+
     // Release all model/runtime resources
     void unload_model();
+
+    // Enable [ICL-prefill] debug dumps (development aid)
+    void set_debug_dump(bool enabled) { debug_dump_ = enabled; }
+
+    // Attention-over-context dump for word-alignment research: when the
+    // path is non-empty, forward_step accumulates the post-softmax
+    // attention row of the selected talker layer (all heads, [n_kv ×
+    // n_head], heads are blocks of n_kv in the flat row), one row per
+    // generated frame; generate()/generate_icl() write the rows to the
+    // path at the end of generation. Binary format: magic 'ATTD',
+    // int32 version, layer, n_head, n_rows, then per row an int32 n_kv
+    // followed by n_kv × n_head float32 values.
+    void set_attn_dump(const std::string & path, int layer = 27) { attn_dump_ = !path.empty(); attn_dump_path_ = path; attn_dump_layer_ = layer; }
+    // One attention row per generated frame; row f covers KV 0..base+f
+    // (the cache grows by one entry per frame).
+    const std::vector<std::vector<float>> & attn_rows() const { return attn_rows_; }
     
     // Initialize KV cache
     bool init_kv_cache(int32_t n_ctx);
@@ -268,8 +286,9 @@ public:
     // speaker_embd: speaker embedding [hidden_size]
     // max_len: maximum number of frames to generate
     // output: generated speech codes [n_frames, n_codebooks]
-    // Progress callback: (current_frame, max_frames) called after each frame
-    using progress_callback_t = std::function<void(int, int)>;
+    // Per-frame callback during generation: (frame_codes, n_codebooks,
+    // frame_index). Return false to abort generation (user stop).
+    using FrameCallback = std::function<bool(const int32_t *, int32_t, int32_t)>;
 
     bool generate(const int32_t * text_tokens, int32_t n_tokens,
                   const float * speaker_embd, int32_t max_len,
@@ -278,19 +297,36 @@ public:
                   float repetition_penalty = 1.05f,
                   float temperature = 0.9f,
                   int32_t top_k = 50,
-                  int32_t speaker_token_id = -1,
                   const int32_t * instruct_tokens = nullptr,
-                  int32_t n_instruct_tokens = 0,
-                  progress_callback_t progress_cb = nullptr);
+                  int32_t n_instruct = 0,
+                  float eos_bias = 0.0f,
+                  int32_t target_frames = 0,
+                  bool rep_loop_detect = false,
+                  const FrameCallback & on_frame = nullptr);
+
+    /// Generate speech codes with in-context voice cloning.
+    /// ref_codec_tokens: [n_ref_frames × 16] from the codec encoder.
+    /// ref_text_tokens: tokenized transcript of the reference audio.
+    /// The reference text + codec tokens are interleaved as prefill
+    /// context before the target text, carrying accent/prosody.
+    bool generate_icl(const int32_t * text_tokens, int32_t n_tokens,
+                      const int32_t * ref_text_tokens, int32_t n_ref_text,
+                      const int32_t * ref_codec_tokens, int32_t n_ref_frames,
+                      const float * speaker_embd, int32_t max_len,
+                      std::vector<int32_t> & output,
+                      int32_t language_id = 2050,
+                      float repetition_penalty = 1.05f,
+                      float temperature = 0.9f,
+                      int32_t top_k = 50,
+                      float eos_bias = 0.0f,
+                      int32_t target_frames = 0,
+                      bool rep_loop_detect = true,
+                      const FrameCallback & on_frame = nullptr);
     
     const tts_transformer_config & get_config() const { return model_.config; }
     
     const std::string & get_error() const { return error_msg_; }
     
-    void set_force_f32_acc(bool v) { force_f32_acc_ = v; }
-    void set_force_cpu(bool v) { force_cpu_ = v; }
-    void set_seed(uint32_t seed) { if (seed) rng_.seed(seed); }
-
     // Legacy interface for compatibility
     bool forward(const int32_t * tokens, int32_t n_tokens, int32_t n_past,
                  std::vector<float> & output);
@@ -312,9 +348,16 @@ private:
                              std::vector<float> & prefill_embd,
                              std::vector<float> & trailing_text_hidden,
                              std::vector<float> & tts_pad_embed,
-                             int32_t speaker_token_id = -1,
                              const int32_t * instruct_tokens = nullptr,
-                             int32_t n_instruct_tokens = 0);
+                             int32_t n_instruct = 0);
+
+    bool build_prefill_graph_icl(const int32_t * text_tokens, int32_t n_tokens,
+                                 const int32_t * ref_text_tokens, int32_t n_ref_text,
+                                 const int32_t * ref_codec_tokens, int32_t n_ref_frames,
+                                 const float * speaker_embd, int32_t language_id,
+                                 std::vector<float> & prefill_embd,
+                                 std::vector<float> & trailing_text_hidden,
+                                 std::vector<float> & tts_pad_embed);
 
     struct ggml_cgraph * build_prefill_forward_graph(int32_t n_tokens, int32_t n_past);
 
@@ -350,21 +393,24 @@ private:
     // Load tensor data from file
     bool load_tensor_data(const std::string & path, struct gguf_context * ctx);
     
-    // Helper: ggml_mul_mat with optional f32 accumulation precision
-    struct ggml_tensor * mul_mat(struct ggml_context * ctx,
-                                 struct ggml_tensor * a,
-                                 struct ggml_tensor * b);
-
     tts_transformer_model model_;
     tts_transformer_state state_;
     std::string error_msg_;
-    bool force_f32_acc_ = false;
-    bool force_cpu_ = false;
     
     // Cached hidden states from last forward pass
     std::vector<float> last_hidden_;
     std::vector<ggml_fp16_t> embd_row_fp16_scratch_;
     std::mt19937 rng_{std::random_device{}()};
+
+    // Enable [ICL-prefill] debug dumps (development aid)
+    bool debug_dump_ = false;
+    bool attn_dump_ = false;
+    int attn_dump_layer_ = 27;
+    std::string attn_dump_path_;
+    std::vector<std::vector<float>> attn_rows_;
+
+    // Write attn_rows_ to attn_dump_path_ (no-op when dumping is off)
+    bool write_attn_dump();
     CoreMLCodePredictor coreml_code_predictor_;
     bool use_coreml_code_predictor_ = false;
     std::string coreml_code_predictor_path_;

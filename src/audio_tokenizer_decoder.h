@@ -173,6 +173,17 @@ public:
     // Returns: audio samples normalized to [-1, 1] at 24kHz
     bool decode(const int32_t * codes, int32_t n_frames,
                 std::vector<float> & samples);
+
+    // Streaming window decode: decode frames [start_frame, end_frame) of
+    // `codes` (full-code array, n_frames total), including `context_frames`
+    // of warmup before start_frame (their output is discarded, but they
+    // condition the causal convs/transformer). Appends ONLY the samples
+    // for [start_frame, end_frame) to `out_new`. Returns samples produced.
+    // Used for progressive audio delivery during generation.
+    bool decode_window(const int32_t * codes, int32_t n_frames,
+                       int32_t start_frame, int32_t end_frame,
+                       int32_t context_frames,
+                       std::vector<float> & out_new);
     
     const audio_decoder_config & get_config() const { return model_.config; }
     
@@ -181,6 +192,13 @@ public:
 private:
     // Build computation graph for decoding
     struct ggml_cgraph * build_graph(int32_t n_frames);
+    bool decode_single(const int32_t * codes, int32_t n_frames, int32_t position_offset,
+                       std::vector<float> & samples);
+    bool is_primary_backend_cuda() const;
+    bool decode_chunked_cuda(const int32_t * codes, int32_t n_frames,
+                             std::vector<float> & samples,
+                             int32_t max_gpu_frames, int32_t context_frames_cfg);
+    int64_t output_samples_for_frames(int32_t n_frames) const;
     
     // Apply Snake activation: x + (1/alpha) * sin^2(alpha * x)
     struct ggml_tensor * apply_snake(struct ggml_context * ctx,

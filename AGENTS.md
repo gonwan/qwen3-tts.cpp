@@ -83,13 +83,19 @@ ggml_backend_tensor_get(out, output_data, 0, size);
 ggml_backend_sched_reset(state_.sched);
 ```
 
-Important: `ggml_cast` to F32 is needed before `ggml_mul_mat` when weight tensors are F16 (specifically `ffn_down` in both talker and code predictor layers).
+Important: the `ggml_cast` to F32 before `ggml_mul_mat` is needed only for F16 weight tensors
+(specifically `ffn_down` in both talker and code predictor layers). Gate it on the stored type:
+`ggml_is_quantized(layer.ffn_down->type) ? layer.ffn_down : ggml_cast(ctx0, layer.ffn_down, GGML_TYPE_F32)`.
+Passing a quantized weight through the cast is not a no-op: the vendored ggml-cpu type traits derive
+`vec_dot_type` from src0's type, so an F32 src0 selects the f32 dot kernel and the whole weight tensor
+is dequantized on every call (measured on RK3588, Q8_0: 192.4 -> 62.5 ms per code-predictor request,
+3.09x, from gating alone; on f16 the gated form is bit-identical to the unguarded cast).
 
 Backend initialization and scheduling notes:
 
-- Use `init_preferred_backend()` (`src/gguf_loader.cpp`) to select backend in order: `IGPU -> GPU -> ACCEL -> CPU`
+- Use `init_preferred_backend()` (`src/gguf_loader.cpp`) to select backend in order: `GPU -> IGPU -> ACCEL -> CPU`
 - If the selected runtime backend is not CPU, add a CPU backend as scheduler fallback (`backend_cpu`) when calling `ggml_backend_sched_new(...)`
-- Decoder follows the same backend preference; load decoder weights with `GGML_BACKEND_DEVICE_TYPE_IGPU` preference for Metal-first execution
+- Decoder follows the same backend preference; load decoder weights with `GGML_BACKEND_DEVICE_TYPE_GPU`, so they land on the device that computes with them (Metal reports this type)
 
 ### Model Architecture
 

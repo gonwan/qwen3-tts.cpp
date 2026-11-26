@@ -5,6 +5,9 @@ project(qwen3-tts-ggml VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Static libs are linked into the qwen3tts shared lib (C API), so they must be PIC
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 # Compiler flags
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic")
@@ -22,6 +25,10 @@ endif()
 option(QWEN3_TTS_COREML "Enable CoreML code predictor bridge on macOS" ON)
 if(APPLE AND QWEN3_TTS_COREML)
     enable_language(OBJCXX)
+endif()
+
+if(WIN32)
+    add_compile_definitions(_USE_MATH_DEFINES NOMINMAX)
 endif()
 
 # Find threads
@@ -125,6 +132,22 @@ if(GGML_HAS_METAL)
 endif()
 
 # Audio tokenizer decoder library (GGML-based)
+add_library(codec_encoder STATIC
+    src/audio_tokenizer_codec_encoder.cpp
+    src/gguf_loader.cpp
+)
+target_include_directories(codec_encoder PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${GGML_DIR}/include
+)
+target_link_directories(codec_encoder PUBLIC
+    ${GGML_BUILD_DIR}/src
+)
+target_link_libraries(codec_encoder PUBLIC
+    ggml
+    ggml-base
+)
+
 add_library(audio_tokenizer_decoder STATIC
     src/audio_tokenizer_decoder.cpp
     src/gguf_loader.cpp
@@ -160,8 +183,12 @@ target_link_libraries(qwen3_tts PUBLIC
     tts_transformer
     audio_tokenizer_encoder
     audio_tokenizer_decoder
+    codec_encoder
     Threads::Threads
 )
+if(WIN32)
+    target_link_libraries(qwen3_tts PUBLIC psapi)
+endif()
 
 # Shared library with C API (for Nim FFI)
 add_library(qwen3tts_shared SHARED
@@ -220,6 +247,14 @@ add_executable(test_decoder
 )
 target_link_libraries(test_decoder PRIVATE
     audio_tokenizer_decoder
+    Threads::Threads
+)
+
+add_executable(test_codec_encoder
+    tests/test_codec_encoder.cpp
+)
+target_link_libraries(test_codec_encoder PRIVATE
+    codec_encoder
     Threads::Threads
 )
 
