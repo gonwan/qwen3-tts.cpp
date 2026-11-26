@@ -288,8 +288,14 @@ int main(int argc, char ** argv) {
     
     // Generate speech
 #ifdef _WIN32
+    std::string orig_text = text;
     text = mbcs_to_utf8(text);
+    std::string orig_ref_text = ref_text;
+    ref_text = mbcs_to_utf8(ref_text);
     instruct_text = mbcs_to_utf8(instruct_text);
+#else
+    std::string orig_text = text;
+    std::string orig_ref_text = ref_text;
 #endif
     qwen3_tts::tts_result result;
 
@@ -299,18 +305,18 @@ int main(int argc, char ** argv) {
     }
 
     if (!instruct_text.empty()) {
-        fprintf(stderr, "Synthesizing with voice design: \"%s\"\n", text.c_str());
+        fprintf(stderr, "Synthesizing with voice design: \"%s\"\n", orig_text.c_str());
         fprintf(stderr, "Instruct: %s\n", instruct_text.c_str());
         result = stream_mode
             ? tts.synthesize_voice_design(text, instruct_text, params, stream_cli_callback)
             : tts.synthesize_voice_design(text, instruct_text, params);
     } else if (reference_audio.empty()) {
-        fprintf(stderr, "Synthesizing: \"%s\"\n", text.c_str());
+        fprintf(stderr, "Synthesizing: \"%s\"\n", orig_text.c_str());
         result = stream_mode
             ? tts.synthesize_streaming(text, params, stream_cli_callback)
             : tts.synthesize(text, params);
     } else {
-        fprintf(stderr, "Synthesizing with voice cloning: \"%s\"\n", text.c_str());
+        fprintf(stderr, "Synthesizing with voice cloning: \"%s\"\n", orig_text.c_str());
         fprintf(stderr, "Reference audio: %s\n", reference_audio.c_str());
         if (!ref_text.empty()) {
             params.ref_code_path = ref_code_file;
