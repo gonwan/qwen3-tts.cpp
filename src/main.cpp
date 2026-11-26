@@ -92,7 +92,6 @@ int main(int argc, char ** argv) {
     std::string dump_speaker_embedding_file;
     
     qwen3_tts::tts_params params;
-    bool no_f32_acc = false;
     int seed = -1;
     
     // Parse arguments

@@ -199,7 +199,9 @@ class TTSTransformer {
 public:
     TTSTransformer();
     ~TTSTransformer();
-    
+
+    void set_seed(uint32_t seed) { if (seed) rng_.seed(seed); }
+
     // Load model from GGUF file
     bool load_model(const std::string & model_path);
 
