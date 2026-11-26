@@ -112,8 +112,7 @@ cmake -S ggml -B ggml/build -DGGML_VULKAN=ON -DBUILD_SHARED_LIBS=ON
 cmake --build ggml/build -j4
 
 # Build qwen3-tts.cpp
-# Enable PIC for Linux & MinGW-w64
-cmake -S . -B build -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+cmake -S . -B build
 cmake --build build -j4
 ```
 
@@ -183,7 +182,6 @@ Place both `.gguf` files in a `models/` directory.
 | `-r, --reference <file>` | Reference audio for voice cloning | (none) |
 | `--speaker-embedding <file>` | Use precomputed speaker embedding (.json/.bin) | (none) |
 | `--dump-speaker-embedding <file>` | Save extracted embedding from --reference | (none) |
-| `--no-f32-acc` | Disable f32 matmul accumulation | on for GPU |
 | `--seed <n>` | RNG seed for reproducible output | random |
 | `--temperature <val>` | Sampling temperature (0 = greedy) | 0.9 |
 | `--top-k <n>` | Top-k sampling (0 = disabled) | 50 |
