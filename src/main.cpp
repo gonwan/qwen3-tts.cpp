@@ -34,14 +34,14 @@ void print_usage(const char * program) {
     fprintf(stderr, "  -t, --text <text>      Text to synthesize (required)\n");
     fprintf(stderr, "  -o, --output <file>    Output WAV file (default: output.wav)\n");
     fprintf(stderr, "  -r, --reference <file> Reference audio for voice cloning\n");
-    fprintf(stderr, "  --speaker-embedding <file>       Use precomputed speaker embedding (.json/.bin) (Not Working!)\n");
-    fprintf(stderr, "  --dump-speaker-embedding <file>  Save extracted embedding from --reference (Not Working!)\n");
-    fprintf(stderr, "  --seed <n>                       RNG seed for reproducible output (default: random)\n");
     fprintf(stderr, "  --instruct <text>    Voice design instruct (needs VoiceDesign model)\n");
     fprintf(stderr, "  -v, --verbose        Print progress during generation\n");
     fprintf(stderr, "      --ref-text <text>  Transcript (enables ICL cloning)\n");
     fprintf(stderr, "      --ref-code <file>  Pre-computed codec tokens (exact Python encoder)\n");
     fprintf(stderr, "      --stream           Stream audio chunks during generation (logs chunk timing)\n");
+    fprintf(stderr, "  --speaker-embedding <file>       Use precomputed speaker embedding (.json/.bin) (Not Working!)\n");
+    fprintf(stderr, "  --dump-speaker-embedding <file>  Save extracted embedding from --reference (Not Working!)\n");
+    fprintf(stderr, "  --seed <n>                       RNG seed for reproducible output (default: random)\n");
     fprintf(stderr, "  --temperature <val>    Sampling temperature (default: 0.9, 0=greedy)\n");
     fprintf(stderr, "  --top-k <n>            Top-k sampling (default: 50, 0=disabled)\n");
     fprintf(stderr, "  --top-p <val>          Top-p sampling (default: 1.0)\n");
@@ -142,6 +142,24 @@ int main(int argc, char ** argv) {
                 return 1;
             }
             reference_audio = argv[i];
+        } else if (arg == "--ref-text") {
+            if (++i >= argc) {
+                fprintf(stderr, "Error: missing reference text\n");
+                return 1;
+            }
+            ref_text = argv[i];
+        } else if (arg == "--instruct") {
+            if (++i >= argc) {
+                fprintf(stderr, "Error: missing instruct text\n");
+                return 1;
+            }
+            instruct_text = argv[i];
+        } else if (arg == "--ref-code") {
+            if (++i >= argc) {
+                fprintf(stderr, "Error: missing ref-code file\n");
+                return 1;
+            }
+            ref_code_file = argv[i];
         } else if (arg == "--speaker-embedding") {
             if (++i >= argc) {
                 fprintf(stderr, "Error: missing speaker embedding file\n");
@@ -160,24 +178,6 @@ int main(int argc, char ** argv) {
                 return 1;
             }
             seed = std::stoi(argv[i]);
-        } else if (arg == "--ref-text") {
-            if (++i >= argc) {
-                fprintf(stderr, "Error: missing reference text\n");
-                return 1;
-            }
-            ref_text = argv[i];
-        } else if (arg == "--instruct") {
-            if (++i >= argc) {
-                fprintf(stderr, "Error: missing instruct text\n");
-                return 1;
-            }
-            instruct_text = argv[i];
-} else if (arg == "--ref-code") {
-            if (++i >= argc) {
-                fprintf(stderr, "Error: missing ref-code file\n");
-                return 1;
-            }
-            ref_code_file = argv[i];
         } else if (arg == "--temperature") {
             if (++i >= argc) {
                 fprintf(stderr, "Error: missing temperature value\n");
